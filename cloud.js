@@ -1,6 +1,7 @@
-/* PlanWall Stage A — optional Supabase save. Works only after config.js has keys. */
+/* PlanWall Stage A — Supabase save. Parses the login-link token in the address bar. */
 (function () {
   const cfg = window.PLANWALL_CLOUD || {};
+  const SITE = 'https://jnf130.github.io/planwall/';
   const status = () => document.getElementById('saveLabel');
   function say(msg) { const el = status(); if (el) el.textContent = msg; }
 
@@ -11,15 +12,41 @@
   let client = null;
   function getClient() {
     if (!configured()) return null;
-    if (!client) client = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
+    if (!client) {
+      client = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
+        auth: { detectSessionInUrl: true, persistSession: true, autoRefreshToken: true, flowType: 'implicit' }
+      });
+    }
     return client;
   }
 
   async function currentUser() {
     const sb = getClient();
     if (!sb) return null;
-    const { data } = await sb.auth.getUser();
-    return data && data.user;
+    const sess = await sb.auth.getSession();
+    if (sess && sess.data && sess.data.session && sess.data.session.user) {
+      return sess.data.session.user;
+    }
+    const u = await sb.auth.getUser();
+    return u && u.data && u.data.user;
+  }
+
+  async function absorbLoginLink() {
+    const sb = getClient();
+    if (!sb) return;
+    if (location.hash && location.hash.indexOf('access_token') !== -1) {
+      const hash = new URLSearchParams(location.hash.replace(/^#/, ''));
+      const access_token = hash.get('access_token');
+      const refresh_token = hash.get('refresh_token');
+      if (access_token && refresh_token) {
+        await sb.auth.setSession({ access_token, refresh_token });
+      } else {
+        await sb.auth.getSession();
+      }
+      history.replaceState(null, '', SITE);
+    }
+    const user = await currentUser();
+    if (user) say('Cloud signed in · ' + (user.email || 'ok'));
   }
 
   window.planwallCloud = {
@@ -27,9 +54,12 @@
     async signIn(email) {
       const sb = getClient();
       if (!sb) { alert('Cloud save is not set up yet. Add Supabase keys to config.js.'); return; }
-      const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: location.href } });
+      const { error } = await sb.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: SITE }
+      });
       if (error) alert(error.message);
-      else alert('Check your email for a login link, then come back to this page.');
+      else alert('Check your email for a login link, then click it. After the board reloads, use Cloud save.');
     },
     async signOut() {
       const sb = getClient();
@@ -71,4 +101,10 @@
       return data.data;
     }
   };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', absorbLoginLink);
+  } else {
+    absorbLoginLink();
+  }
 })();
