@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>PlanWall AI v35.0</title>
+<title>PlanWall AI v35.1</title>
 <link rel="manifest" href="manifest.webmanifest"/>
 <link rel="icon" href="icon.svg" type="image/svg+xml"/>
 <meta name="theme-color" content="#1d4ed8"/>
@@ -658,7 +658,7 @@
 <body>
 <div id="app">
   <header class="topbar">
-    <div class="brand"><div class="brand-mark"></div><span>PlanWall AI · v35.0</span></div>
+    <div class="brand"><div class="brand-mark"></div><span>PlanWall AI · v35.1</span></div>
     <div class="toolbar-scroll">
       <button class="toolbtn modebtn active" id="selectTool" title="Select (V)">↖</button>
       <button class="toolbtn modebtn" id="handTool" title="Pan (H)">✋</button>
@@ -863,6 +863,10 @@
     <h2>Project templates</h2>
     <p style="color:#64748b;font-size:13px;margin-top:0">Loads a starter layout onto the board (keeps your current board unless you clear first).</p>
     <div class="template-grid">
+      <button type="button" class="template-card" data-template="weekly">
+        <h3>Weekly work plan</h3>
+        <p>7-day timeline, Promises / Constraints / Ready, PPC sticky, plan-of-the-week decision.</p>
+      </button>
       <button type="button" class="template-card" data-template="construction">
         <h3>90-day construction pull plan</h3>
         <p>Timeline, trade Kanban, RFI pins, decision log, and presentation frames.</p>
@@ -5602,7 +5606,57 @@ document.getElementById('linkTool').onclick = () => {
 
   function applyTemplate(name) {
     const baseX = 1500, baseY = 800;
-    if (name === 'construction') {
+    if (name === 'weekly') {
+      const today = new Date();
+      const monday = new Date(today);
+      const day = monday.getDay();
+      monday.setDate(monday.getDate() - (day === 0 ? 6 : day - 1));
+      const start = monday.toISOString().slice(0, 10);
+      const planDate = today.toISOString().slice(0, 10);
+      createObject('timeline', baseX, baseY, {
+        title: 'This week', days: 7, startDate: start, w: 980, h: 88
+      }, { record: false });
+      createObject('kanban', baseX, baseY + 120, {
+        title: 'Promises', headerColor: '#2563eb', bodyColor: '#dbeafe',
+        tasks: [
+          { text: 'Concrete — footings grid A–C', items: [] },
+          { text: 'Framing — second-floor walls', items: [] },
+          { text: 'MEP — rough-in first floor', items: [] },
+          { text: 'Roof — panels', items: [] },
+          { text: 'Site — utility rough-in', items: [] }
+        ]
+      }, { record: false });
+      createObject('kanban', baseX + 270, baseY + 120, {
+        title: 'Constraints', headerColor: '#d97706', bodyColor: '#fef3c7',
+        tasks: [
+          { text: 'Rebar late — supplier', items: [] },
+          { text: 'RFI-12 grid B-3', items: [] },
+          { text: 'Prior slab pour incomplete', items: [] },
+          { text: 'Inspector Thu 10am', items: [] }
+        ]
+      }, { record: false });
+      createObject('kanban', baseX + 540, baseY + 120, {
+        title: 'Ready', headerColor: '#16a34a', bodyColor: '#dcfce7',
+        tasks: [
+          { text: 'Site grading complete', items: [] },
+          { text: 'Temp power set', items: [] }
+        ]
+      }, { record: false });
+      createObject('sticky', baseX + 820, baseY + 120, {
+        text: 'PPC last week:\n78%'
+      }, { record: false });
+      createObject('pin', baseX + 820, baseY + 280, {
+        pinNumber: nextPinNumber(), title: 'RFI-1', text: 'Hold at grid B-3'
+      }, { record: false });
+      createObject('decision', baseX, baseY + 520, {
+        text: 'Plan of the week — all trades aligned',
+        who: 'GC',
+        date: planDate
+      }, { record: false });
+      createObject('frame', baseX - 30, baseY - 50, {
+        title: '1 · Thursday huddle', w: 1100, h: 720
+      }, { record: false });
+    } else if (name === 'construction') {
       createObject('timeline', baseX, baseY, { title: '90-day pull plan', days: 90, startDate: new Date().toISOString().slice(0, 10), w: 1000, h: 90 }, { record: false });
       createObject('kanban', baseX, baseY + 120, {
         title: 'To Do', headerColor: '#2563eb', bodyColor: '#dbeafe',
