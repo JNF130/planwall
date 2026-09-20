@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>PlanWall AI v35.1</title>
+<title>PlanWall AI v35.2</title>
 <link rel="manifest" href="manifest.webmanifest"/>
 <link rel="icon" href="icon.svg" type="image/svg+xml"/>
 <meta name="theme-color" content="#1d4ed8"/>
@@ -653,12 +653,30 @@
   @media(max-width:1050px){
     .minimap{right:24px}
   }
+  .home-overlay{position:fixed;inset:0;z-index:80;background:#f8fafc;display:none;overflow:auto}
+  .home-overlay.open{display:block}
+  .home-inner{max-width:720px;margin:48px auto 80px;padding:0 24px}
+  .home-inner h1{font-size:28px;margin:0 0 8px;letter-spacing:-.02em}
+  .home-lead{color:#64748b;margin:0 0 28px;font-size:15px}
+  .home-actions{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:28px}
+  .home-actions button{border:1px solid #e2e8f0;background:#fff;border-radius:10px;padding:10px 14px;font:inherit;cursor:pointer}
+  .home-actions button.primary{background:#1d4ed8;color:#fff;border-color:#1d4ed8}
+  .home-actions button:hover{border-color:#93c5fd}
+  .home-section{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#64748b;margin:18px 0 8px}
+  .home-list{display:grid;gap:8px}
+  .home-card{display:flex;justify-content:space-between;align-items:center;gap:12px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px;cursor:pointer;text-align:left}
+  .home-card:hover{border-color:#93c5fd;background:#eff6ff}
+  .home-card h3{margin:0;font-size:15px}
+  .home-card p{margin:4px 0 0;font-size:12px;color:#64748b}
+  .home-empty{color:#94a3b8;font-size:13px}
 </style>
 </head>
 <body>
 <div id="app">
   <header class="topbar">
-    <div class="brand"><div class="brand-mark"></div><span>PlanWall AI · v35.1</span></div>
+    <div class="brand"><div class="brand-mark"></div><span>PlanWall AI · v35.2</span>
+      <button class="toolbtn" id="homeBtn" title="All boards" style="margin-left:8px">Home</button>
+    </div>
     <div class="toolbar-scroll">
       <button class="toolbtn modebtn active" id="selectTool" title="Select (V)">↖</button>
       <button class="toolbtn modebtn" id="handTool" title="Pan (H)">✋</button>
@@ -808,6 +826,22 @@
     <div class="status-group"><span id="zoomLabel">Zoom 100%</span><span id="coordLabel">X 0 · Y 0</span><span id="selectedLabel">0 selected</span></div>
     <div class="status-group"><span id="saveLabel">Autosaved</span><span id="pdfStatus">PDF ready</span><span>Local</span></div>
   </footer>
+</div>
+
+<div class="home-overlay" id="homeOverlay">
+  <div class="home-inner">
+    <h1>Boards</h1>
+    <p class="home-lead">Pick a board. Weekly work plan starts a new week — it does not stack on the job you already have open.</p>
+    <div class="home-actions">
+      <button type="button" class="primary" id="homeWeekly">Weekly work plan</button>
+      <button type="button" id="homeNew">New empty board</button>
+      <button type="button" id="homeContinue">Back to the board</button>
+    </div>
+    <div class="home-section">On this computer</div>
+    <div class="home-list" id="homeLocalList"></div>
+    <div class="home-section">In the cloud</div>
+    <div class="home-list" id="homeCloudList"><p class="home-empty">Sign in to see cloud boards.</p></div>
+  </div>
 </div>
 
 <div class="modal-backdrop" id="helpModal">
@@ -1154,6 +1188,7 @@
       if (saveEl && saveEl.textContent === 'Save failed') {
         saveEl.textContent = 'Autosaved';
       }
+      scheduleCloudSave();
     }).catch(err => {
       console.warn('IndexedDB board save failed', err);
     });
@@ -1471,6 +1506,110 @@
   function openBoardsModal() {
     renderBoardList();
     document.getElementById('boardsModal').style.display = 'flex';
+  }
+
+  function markSavedStatus(label) {
+    const saveEl = document.getElementById('saveLabel');
+    if (!saveEl) return;
+    const t = new Date();
+    const clock = t.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    saveEl.textContent = (label || 'Saved') + ' · ' + clock;
+    saveEl.style.color = '#16a34a';
+    setTimeout(() => { saveEl.style.color = ''; }, 2500);
+  }
+
+  let cloudSaveTimer = null;
+  function scheduleCloudSave() {
+    if (!window.planwallCloud) return;
+    clearTimeout(cloudSaveTimer);
+    cloudSaveTimer = setTimeout(async () => {
+      try {
+        const meta = getActiveBoardMeta();
+        const name = (meta && meta.name) || localStorage.getItem('planwall-last-cloud-name');
+        if (!name) return;
+        if (!(await window.planwallCloud.signedIn())) return;
+        await window.planwallCloud.save(serialize(), name, { quiet: true });
+        markSavedStatus('Saved');
+      } catch (e) {}
+    }, 2500);
+  }
+
+  function hideHome() {
+    document.getElementById('homeOverlay')?.classList.remove('open');
+  }
+  function showHome() {
+    renderHomeLists();
+    document.getElementById('homeOverlay')?.classList.add('open');
+  }
+
+  function renderHomeLists() {
+    const localEl = document.getElementById('homeLocalList');
+    if (localEl) {
+      const idx = ensureBoardIndex();
+      if (!idx.boards.length) {
+        localEl.innerHTML = '<p class="home-empty">No boards on this computer yet.</p>';
+      } else {
+        localEl.innerHTML = idx.boards.map(b => `
+          <button type="button" class="home-card" data-local="${b.id}">
+            <div><h3>${escapeHtml(b.name)}</h3>
+            <p>Modified ${escapeHtml(formatBoardTime(b.modified))}</p></div>
+          </button>`).join('');
+        localEl.querySelectorAll('[data-local]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            await switchToBoard(btn.dataset.local);
+            hideHome();
+          });
+        });
+      }
+    }
+    const cloudEl = document.getElementById('homeCloudList');
+    if (!cloudEl) return;
+    cloudEl.innerHTML = '<p class="home-empty">Checking cloud…</p>';
+    (async () => {
+      if (!window.planwallCloud) {
+        cloudEl.innerHTML = '<p class="home-empty">Cloud is not set up.</p>';
+        return;
+      }
+      const rows = await window.planwallCloud.list();
+      if (!rows.length) {
+        cloudEl.innerHTML = '<p class="home-empty">No cloud boards yet. Open a board, then File → Cloud save — or use Weekly work plan.</p>';
+        return;
+      }
+      cloudEl.innerHTML = rows.map(r => `
+        <button type="button" class="home-card" data-cloud="${escapeHtml(r.name)}">
+          <div><h3>${escapeHtml(r.name)}</h3>
+          <p>Cloud · ${escapeHtml(r.updated_at ? new Date(r.updated_at).toLocaleString() : '')}</p></div>
+        </button>`).join('');
+      cloudEl.querySelectorAll('[data-cloud]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const name = btn.dataset.cloud;
+          const data = await window.planwallCloud.load(name);
+          if (!data) return;
+          const idx = ensureBoardIndex();
+          const existing = idx.boards.find(b => b.name === name);
+          if (existing) await switchToBoard(existing.id);
+          else createNewBoard(name);
+          restore(data, false);
+          try { persistActiveBoard(serialize()); } catch (e) {}
+          hideHome();
+          markSavedStatus('Opened');
+        });
+      });
+    })();
+  }
+
+  async function startWeeklyAsNewBoard() {
+    if (objects.length) {
+      try { persistActiveBoard(serialize()); } catch (e) {}
+    }
+    createNewBoard('This week');
+    applyTemplate('weekly');
+    hideHome();
+    document.getElementById('templatesModal').style.display = 'none';
+    if (window.planwallCloud) {
+      try { await window.planwallCloud.save(serialize(), 'This week'); } catch (e) {}
+    }
+    markSavedStatus('Saved');
   }
 
   /** Serialize one object for transfer (no DOM). */
@@ -6017,10 +6156,24 @@ document.getElementById('linkTool').onclick = () => {
   };
   document.querySelectorAll('.template-card').forEach(btn => {
     btn.addEventListener('click', () => {
+      if (btn.dataset.template === 'weekly') {
+        startWeeklyAsNewBoard();
+        return;
+      }
+      if (objects.length && !confirm('Add this template onto the current board? (Weekly work plan always starts a new board.)')) return;
       applyTemplate(btn.dataset.template);
       document.getElementById('templatesModal').style.display = 'none';
     });
   });
+  document.getElementById('homeBtn')?.addEventListener('click', () => showHome());
+  document.getElementById('homeContinue')?.addEventListener('click', () => hideHome());
+  document.getElementById('homeNew')?.addEventListener('click', () => {
+    const name = prompt('Name for the new empty board:', defaultBoardName());
+    if (name === null) return;
+    createNewBoard(name);
+    hideHome();
+  });
+  document.getElementById('homeWeekly')?.addEventListener('click', () => startWeeklyAsNewBoard());
   document.getElementById('railTemplates')?.addEventListener('click', () => {
     renderCustomTemplates();
     document.getElementById('templatesModal').style.display = 'flex';
