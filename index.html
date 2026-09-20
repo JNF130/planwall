@@ -6929,7 +6929,7 @@ document.getElementById('linkTool').onclick = () => {
 <script src="cloud.js"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=352', { updateViaCache: 'none' }).catch(() => {});
   }
 </script>
 </body>
