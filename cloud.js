@@ -35,14 +35,7 @@
     const sb = getClient();
     if (!sb) return;
     if (location.hash && location.hash.indexOf('access_token') !== -1) {
-      const hash = new URLSearchParams(location.hash.replace(/^#/, ''));
-      const access_token = hash.get('access_token');
-      const refresh_token = hash.get('refresh_token');
-      if (access_token && refresh_token) {
-        await sb.auth.setSession({ access_token, refresh_token });
-      } else {
-        await sb.auth.getSession();
-      }
+      await sb.auth.getSession();
       history.replaceState(null, '', SITE);
     }
     const user = await currentUser();
@@ -66,11 +59,15 @@
       if (sb) await sb.auth.signOut();
       say('Signed out of cloud');
     },
-    async save(payload, projectName) {
+    async signedIn() {
+      return !!(await currentUser());
+    },
+    async save(payload, projectName, opts) {
+      const quiet = opts && opts.quiet;
       const sb = getClient();
       const user = await currentUser();
       if (!sb || !user) {
-        alert('Sign in first (File → Cloud sign-in). Until then, use 2 · Save board file.');
+        if (!quiet) alert('Sign in first (File → Cloud sign-in). Until then, use 2 · Save board file.');
         return false;
       }
       const name = projectName || 'board';
@@ -85,6 +82,14 @@
       say('Saved to cloud · ' + name);
       try { localStorage.setItem('planwall-last-cloud-name', name); } catch (e) {}
       return true;
+    },
+    async list() {
+      const sb = getClient();
+      const user = await currentUser();
+      if (!sb || !user) return [];
+      const { data, error } = await sb.from('boards').select('name,updated_at').eq('user_id', user.id).order('updated_at', { ascending: false });
+      if (error) { console.warn(error); return []; }
+      return data || [];
     },
     async load(projectName) {
       const sb = getClient();
